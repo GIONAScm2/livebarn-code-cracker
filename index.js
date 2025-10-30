@@ -113,15 +113,25 @@ function requestForCode(code) {
       res.on('data', chunk => chunks.push(chunk));
       res.on('end', () => {
         const raw = Buffer.concat(chunks).toString();
+        const json = safeParseJSON(raw);
 
         if (res.statusCode >= 200 && res.statusCode < 300) {
-          const json = safeParseJSON(raw);
           if (Array.isArray(json) && json.length === 1 && json[0] && typeof json[0] === 'object') {
             return resolve(json[0]);
           }
           return resolve(null);
+        } else if (json && json.error) {
+          const errorDesc = json.error_description;
+          switch (json.error) {
+            case 'invalid_token':
+              console.error(errorDesc ?? `Invalid token: "${commonOptions.headers.Authorization}"`);
+              break;
+            default:
+              console.error(errorDesc ?? json.error);
+              break;
+          }
         } else {
-          //
+          console.error(`Failed to query code "${code}" (status ${res.statusCode})`);
         }
       });
     });
@@ -204,9 +214,7 @@ function classifyResponse(obj) {
         console.log(`${numKeysChecked}/10,000 combinations checked (${percentChecked}%)`);
       }
     } catch (err) {
-      results[code] = null;
-      writeProgressAtomic(results);
-      console.error(`[${code}] error: ${err.message} (progress saved)`);
+      console.error(`Failed to query code "${code}": ${err.message}`);
     }
 
     if (i < 9999) {
